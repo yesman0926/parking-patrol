@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="주차순찰">
+<meta name="theme-color" content="#11161b">
+<title>주차순찰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-column mobile tool, camera viewer on top, result card under it, tab bar fixed at bottom.
+   Palette: parking-sign blue on cool concrete; verdict colors are semantic (green / amber / red). */
+:root {
+  --bg: #e9edf1;
+  --surface: #ffffff;
+  --sunken: #f3f5f8;
+  --ink: #141a20;
+  --muted: #5a6573;
+  --line: #d3dae2;
+  --accent: #1b58b8;
+  --accent-ink: #ffffff;
+  --ok: #0b7d47;      --ok-bg: #e2f4ea;
+  --visit: #a86200;   --visit-bg: #fcefd9;
+  --bad: #c3242c;     --bad-bg: #fbe3e4;
+  --check: #4b5a6e;   --check-bg: #e6eaf0;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-plate: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --r: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1215; --surface: #171d23; --sunken: #12171c; --ink: #e6ebf0; --muted: #8f9cab; --line: #283039;
+    --accent: #5d97f2; --accent-ink: #0b1220;
+    --ok: #3fcf86; --ok-bg: #12301f; --visit: #f2ae45; --visit-bg: #352612; --bad: #ff6a70; --bad-bg: #3a1618;
+    --check: #a9b6c6; --check-bg: #222a33;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1215; --surface: #171d23; --sunken: #12171c; --ink: #e6ebf0; --muted: #8f9cab; --line: #283039;
+  --accent: #5d97f2; --accent-ink: #0b1220;
+  --ok: #3fcf86; --ok-bg: #12301f; --visit: #f2ae45; --visit-bg: #352612; --bad: #ff6a70; --bad-bg: #3a1618;
+  --check: #a9b6c6; --check-bg: #222a33;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font-ui);
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 560px; margin: 0 auto; padding-inline: 16px;
+  padding-block: calc(env(safe-area-inset-top, 0px) + 10px) calc(env(safe-area-inset-bottom, 0px) + 92px); }
+
+/* top bar */
+.appbar { display: flex; align-items: center; gap: 10px; padding-block: 4px 12px; }
+.mark { width: 34px; height: 34px; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center; font: 22px/1 var(--font-plate); flex: none; }
+.appbar h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.status { margin-left: auto; font-size: 12.5px; color: var(--muted); text-align: right; line-height: 1.35; min-width: 0; }
+.status b { color: var(--ink); font-weight: 500; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-right: 4px; vertical-align: 1px; }
+.dot.ready { background: var(--ok); } .dot.loading { background: var(--visit); } .dot.error { background: var(--bad); }
+
+/* camera viewer */
+.viewer { position: relative; width: 100%; height: clamp(300px, 50vh, 520px); background: #05080a; border-radius: var(--r);
+  overflow: hidden; isolation: isolate; transition: box-shadow .2s; }
+.viewer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.guide { position: absolute; left: 7%; right: 7%; top: 50%; transform: translateY(-58%); aspect-ratio: 2.6 / 1;
+  border-radius: 10px; box-shadow: 0 0 0 100vmax rgba(3, 6, 9, .5); }
+.guide i { position: absolute; width: 26px; height: 26px; border: 4px solid #fff; }
+.guide i:nth-child(1) { left: -2px; top: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 10px; }
+.guide i:nth-child(2) { right: -2px; top: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 10px; }
+.guide i:nth-child(3) { left: -2px; bottom: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 10px; }
+.guide i:nth-child(4) { right: -2px; bottom: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 10px; }
+.lock { position: absolute; border: 2px solid #ffd23f; border-radius: 6px; background: rgba(255, 210, 63, .12); transition: all .08s linear; }
+.hint { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #fff; font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8); padding-inline: 12px; }
+.live { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: rgba(5, 8, 10, .72); color: #fff;
+  border-radius: 999px; padding: 4px 12px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.live b { font-family: var(--font-plate); font-weight: 400; font-size: 16px; letter-spacing: .03em; }
+.cover { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: #fff;
+  background: radial-gradient(circle at 50% 40%, rgba(27, 88, 184, .35), rgba(5, 8, 10, .92) 70%); }
+.cover p { margin: 10px 0 0; font-size: 14px; color: #c9d3de; max-width: 30ch; }
+.cover .err { color: #ffb4b7; }
+.big { appearance: none; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 700; font-size: 18px;
+  padding: 14px 30px; min-height: 52px; }
+.viewer.flash-ok { box-shadow: 0 0 0 5px var(--ok); } .viewer.flash-visit { box-shadow: 0 0 0 5px var(--visit); }
+.viewer.flash-bad { box-shadow: 0 0 0 5px var(--bad); }
+
+.tools { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; min-height: 44px;
+  padding: 8px 14px; font-size: 15px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--bad); }
+.btn.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.grow { flex: 1 1 0; }
+.tools .btn { white-space: nowrap; padding-inline: 8px; }
+.btn svg { width: 18px; height: 18px; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.manual { display: flex; gap: 8px; margin-top: 10px; }
+.manual input { flex: 1; min-width: 0; }
+input[type=text], input[type=number], input[type=date], input[type=search], select, textarea {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 10px; min-height: 44px; padding: 8px 12px; font-size: 16px; width: 100%; }
+textarea { min-height: 120px; font-size: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+/* result card */
+.result { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; }
+.result.ok { background: var(--ok-bg); border-color: var(--ok); }
+.result.visit { background: var(--visit-bg); border-color: var(--visit); }
+.result.bad { background: var(--bad-bg); border-color: var(--bad); }
+.result.check { background: var(--check-bg); border-color: var(--check); }
+.result .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.verdict { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.result.ok .verdict { color: var(--ok); } .result.visit .verdict { color: var(--visit); } .result.bad .verdict { color: var(--bad); }
+.result.check .verdict { color: var(--check); }
+.where { font-size: 18px; font-weight: 500; }
+.meta { font-size: 14px; color: var(--muted); }
+.warn { display: inline-block; font-size: 13px; font-weight: 700; color: var(--bad); border: 1.5px solid var(--bad); border-radius: 6px; padding: 1px 7px; }
+.empty { color: var(--muted); font-size: 15px; }
+.sugg { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* license plate */
+.plate { display: inline-flex; align-items: center; font-family: var(--font-plate); font-weight: 400; color: #111;
+  background: #fbfbf7; border: 2.5px solid #1b1b1b; border-radius: 7px; padding: 1px 10px 0; font-size: 26px; line-height: 1.25;
+  letter-spacing: .02em; white-space: nowrap; box-shadow: inset 0 0 0 2px #fbfbf7, inset 0 0 0 3px #9aa0a6; }
+.plate.sm { font-size: 17px; padding: 0 7px; border-width: 2px; border-radius: 5px; }
+.list .plate.sm { min-width: 7.4em; justify-content: center; flex: none; }
+.list .sub { display: block; font-size: 13px; }
+
+/* sections */
+h2 { font-size: 15px; margin: 22px 0 8px; color: var(--muted); font-weight: 500; letter-spacing: .02em; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); min-width: 0; }
+.list li:first-child { border-top: 0; }
+.list .txt { min-width: 0; flex: 1; font-size: 14px; color: var(--muted); line-height: 1.35; }
+.list .txt b { color: var(--ink); font-weight: 500; font-size: 15px; }
+.list .end { margin-left: auto; text-align: right; font-size: 13px; color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 7px; vertical-align: 1px; }
+.chip.ok { color: var(--ok); background: var(--ok-bg); } .chip.visit { color: var(--visit); background: var(--visit-bg); }
+.chip.bad { color: var(--bad); background: var(--bad-bg); } .chip.check { color: var(--check); background: var(--check-bg); }
+.chip.ex { color: var(--muted); border: 1px dashed var(--muted); }
+.notice { display: flex; gap: 10px; align-items: center; background: var(--sunken); border: 1px dashed var(--line); border-radius: var(--r);
+  padding: 10px 14px; font-size: 14px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.notice span { flex: 1 1 200px; }
+
+details.card { padding: 0; margin-top: 10px; }
+details.card summary { list-style: none; padding: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+details.card summary::-webkit-details-marker { display: none; }
+details.card summary::after { content: "+"; margin-left: auto; font-size: 22px; line-height: 1; color: var(--muted); }
+details.card[open] summary::after { content: "–"; }
+.form { display: grid; gap: 10px; padding: 0 14px 14px; }
+.form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg label { flex: 1; display: block; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; text-align: center; padding: 10px 6px; font-size: 15px; color: var(--ink); background: var(--surface); }
+.seg input:checked + span { background: var(--ink); color: var(--bg); font-weight: 700; }
+.seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: -3px; }
+.formmsg { font-size: 14px; min-height: 1.2em; }
+.formmsg.err { color: var(--bad); } .formmsg.ok { color: var(--ok); }
+.help { font-size: 13px; color: var(--muted); margin: 0; }
+code { font-size: 12.5px; background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+
+/* log tab */
+.monthbar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.monthbar strong { font-size: 20px; flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.stat .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat .l { font-size: 13px; color: var(--muted); }
+.stat.visit .n { color: var(--visit); } .stat.bad .n { color: var(--bad); } .stat.ok .n { color: var(--ok); }
+.count { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.count.over { color: var(--bad); }
+
+/* tab bar */
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--surface); border-top: 1px solid var(--line);
+  display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabbar button { appearance: none; border: 0; background: none; flex: 1; max-width: 186px; padding: 9px 4px 10px; display: grid;
+  justify-items: center; gap: 2px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.tabbar svg { width: 24px; height: 24px; }
+.tabbar button[aria-selected="true"] { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="appbar">
+    <div class="mark" aria-hidden="true">P</div>
+    <h1>주차순찰</h1>
+    <div class="status" id="status"></div>
+  </header>
+
+  <!-- ===== 스캔 ===== -->
+  <section id="tab-scan" role="tabpanel">
+    <div class="viewer" id="viewer">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="guide" id="guide" hidden><i></i><i></i><i></i><i></i><div class="lock" id="lock" hidden></div></div>
+      <div class="live" id="live" hidden></div>
+      <div class="hint" id="hint" hidden>번호판이 상자를 가득 채우도록 맞춰 주세요</div>
+      <div class="cover" id="cover">
+        <div>
+          <button class="big" id="startBtn" type="button">스캔 시작</button>
+          <p id="coverMsg">카메라를 켜고 번호판에 비추면<br>입주민 · 방문 · 미등록을 바로 알려줍니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tools">
+      <button class="btn grow" id="stopBtn" type="button" hidden>멈춤</button>
+      <button class="btn grow" id="torchBtn" type="button" hidden>손전등</button>
+      <button class="btn grow" id="manualBtn" type="button">직접 입력</button>
+      <label class="btn grow file-btn" for="photoInput">사진 확인<input id="photoInput" type="file" accept="image/*"></label>
+    </div>
+    <form class="manual" id="manualForm" hidden>
+      <input type="text" id="manualInput" placeholder="예: 12가3456 또는 뒷자리 3456" autocomplete="off" enterkeyhint="search">
+      <button class="btn primary" type="submit">조회</button>
+    </form>
+    <div id="pick"></div>
+
+    <div class="result" id="result" aria-live="polite"></div>
+
+    <h2>최근 확인</h2>
+    <div class="card"><ul class="list" id="recent"></ul></div>
+  </section>
+
+  <!-- ===== 차량 명부 ===== -->
+  <section id="tab-cars" role="tabpanel" hidden>
+    <div class="notice" id="sampleNotice" hidden>
+      <span>지금 보이는 차량과 기록은 <b>예시</b>입니다. 실제 명부를 넣기 전에 지워 주세요.</span>
+      <button class="btn" type="button" id="clearSample">예시 지우기</button>
+    </div>
+    <div class="manual"><input type="search" id="carSearch" placeholder="번호 · 뒷자리 · 동호수로 찾기" autocomplete="off"></div>
+
+    <details class="card" id="addCard">
+      <summary id="addTitle">차량 추가</summary>
+      <form class="form" id="carForm" novalidate>
+        <label>차량 번호<input type="text" id="fPlate" placeholder="12가3456" autocomplete="off"></label>
+        <div class="seg" role="radiogroup" aria-label="구분">
+          <label><input type="radio" name="fKind" id="fKindR" value="resident" checked><span>입주민</span></label>
+          <label><input type="radio" name="fKind" id="fKindV" value="visitor"><span>방문차량</span></label>
+        </div>
+        <div class="two">
+          <label>동<input type="text" id="fDong" inputmode="numeric" placeholder="101"></label>
+          <label>호<input type="text" id="fHo" inputmode="numeric" placeholder="1203"></label>
+        </div>
+        <div class="two" id="fPeriod" hidden>
+          <label>방문 시작일<input type="date" id="fFrom"></label>
+          <label>방문 종료일<input type="date" id="fTo"></label>
+        </div>
+        <label>메모<input type="text" id="fMemo" placeholder="예: 부모님 방문, 경차"></label>
+        <div class="row-actions">
+          <button class="btn primary grow" type="submit" id="fSubmit">저장</button>
+          <button class="btn" type="button" id="fCancel" hidden>취소</button>
+        </div>
+        <div class="formmsg" id="fMsg"></div>
+      </form>
+    </details>
+
+    <details class="card">
+      <summary>엑셀 / CSV로 한꺼번에 등록</summary>
+      <div class="form">
+        <p class="help">엑셀에서 아래 순서로 열을 만든 뒤, 범위를 복사해 그대로 붙여넣으세요. 첫 줄이 제목이면 자동으로 건너뜁니다.</p>
+        <p class="help"><code>차량번호</code> <code>구분(입주민/방문)</code> <code>동</code> <code>호</code> <code>메모</code> <code>시작일</code> <code>종료일</code></p>
+        <textarea id="csvText" placeholder="12가3456	입주민	101	1203&#10;157허2468	방문	103	502	부모님	2026-10-10	2026-10-14"></textarea>
+        <div class="row-actions">
+          <button class="btn primary grow" type="button" id="csvImport">가져오기</button>
+          <label class="btn file-btn" for="csvFile">CSV 파일 열기<input type="file" id="csvFile" accept=".csv,.txt,text/csv,text/plain"></label>
+        </div>
+        <div class="formmsg" id="csvMsg"></div>
+      </div>
+    </details>
+
+    <h2 id="carCount">등록 차량</h2>
+    <div class="card"><ul class="list" id="carList"></ul></div>
+
+    <h2>설정</h2>
+    <div class="card">
+      <div class="form" style="padding-top:14px">
+        <label>확정 전에 같은 번호를 몇 번 읽을까요?
+          <select id="sVotes"><option value="2">2번 (빠름)</option><option value="3">3번 (정확)</option></select>
+        </label>
+        <label>방문차량 월 허용 횟수 (0이면 제한 없음)<input type="number" id="sLimit" min="0" max="31" inputmode="numeric"></label>
+        <label>결과 알림음
+          <select id="sSound"><option value="on">켜기</option><option value="off">끄기</option></select>
+        </label>
+        <p class="help">같은 차량은 하루에 한 번만 기록됩니다. 데이터는 이 휴대폰 브라우저에만 저장되며 서버로 보내지 않습니다.</p>
+        <div class="row-actions">
+          <button class="btn grow" type="button" id="exportCars">명부 CSV 내보내기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 기록 ===== -->
+  <section id="tab-log" role="tabpanel" hidden>
+    <div class="monthbar">
+      <button class="btn" type="button" id="mPrev" aria-label="이전 달">‹</button>
+      <strong id="mLabel"></strong>
+      <button class="btn" type="button" id="mNext" aria-label="다음 달">›</button>
+    </div>
+    <div class="stats" id="stats"></div>
+
+    <h2>방문차량 월간 방문 횟수</h2>
+    <div class="card"><ul class="list" id="visitList"></ul></div>
+
+    <h2>미등록 차량 적발</h2>
+    <div class="card"><ul class="list" id="badList"></ul></div>
+
+    <h2>전체 기록</h2>
+    <div class="card"><ul class="list" id="allList"></ul></div>
+
+    <div class="row-actions" style="margin-top:12px">
+      <button class="btn grow" type="button" id="exportLog">이 달 기록 CSV 내보내기</button>
+      <button class="btn danger" type="button" id="clearMonth">이 달 기록 삭제</button>
+    </div>
+  </section>
+</div>
+
+<nav class="tabbar" role="tablist">
+  <button type="button" role="tab" data-tab="scan" aria-selected="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="7" y="9.5" width="10" height="5" rx="1"/></svg>스캔</button>
+  <button type="button" role="tab" data-tab="cars" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 17h14M6 17l1.5-6h9L18 17M7 11l1.2-3.2A1.5 1.5 0 0 1 9.6 7h4.8a1.5 1.5 0 0 1 1.4.8L17 11"/><circle cx="8" cy="17.5" r="1.5"/><circle cx="16" cy="17.5" r="1.5"/></svg>차량 명부</button>
+  <button type="button" role="tab" data-tab="log" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M8 14h3M8 17h6"/></svg>기록</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js"></script>
+<script>
+// ===== Plate text rules (shared verbatim with the web app) =====
+const PLATE_HANGUL = '가나다라마거너더러머버서어저고노도로모보소오조구누두루무부수우주아바사자배하허호';
+const REGIONS = ['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+const OCR_WHITELIST = '0123456789' + [...new Set((PLATE_HANGUL + REGIONS.join('')).split(''))].join('');
+const PLATE_RE = new RegExp(`(${REGIONS.join('|')})?(\\d{2,3})([${PLATE_HANGUL}])(\\d{4})`);
+// "서울 12 바 3456", "12가3456 " -> canonical string, or null
+function parsePlate(text) {
+  if (!text) return null;
+  const s = String(text).replace(/[^0-9가-힣]/g, '');
+  const m = s.match(PLATE_RE);
+  if (!m) return null;
+  const [, region = '', num, hg, last] = m;
+  if (region && num.length !== 2) return null;           // 2-row plates use 2 digits
+  return region + num + hg + last;
+}
+// plate without the region prefix: "서울12바3456" -> "12바3456"
+function plateCore(p) { return p.replace(new RegExp(`^(${REGIONS.join('|')})`), ''); }
+function editDistance(a, b) {
+  const A = [...a], B = [...b], d = Array.from({ length: A.length + 1 }, (_, i) => [i, ...Array(B.length).fill(0)]);
+  for (let j = 1; j <= B.length; j++) d[0][j] = j;
+  for (let i = 1; i <= A.length; i++) for (let j = 1; j <= B.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (A[i - 1] === B[j - 1] ? 0 : 1));
+  return d[A.length][B.length];
+}
+if (typeof module !== 'undefined') module.exports = { PLATE_HANGUL, REGIONS, OCR_WHITELIST, PLATE_RE, parsePlate, plateCore, editDistance };
+
+</script>
+<script>
+// ===== Pure image pipeline (shared verbatim with the web app) =====
+function toGray(rgba, w, h) {
+  const g = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < w * h; i++, p += 4) g[i] = 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
+  return g;
+}
+// local-mean threshold: 1 = ink (darker than surroundings), 0 = paper
+function adaptiveBinarize(g, w, h, win, C) {
+  const W1 = w + 1, I = new Float64Array(W1 * (h + 1));
+  for (let y = 1; y <= h; y++) { let row = 0; for (let x = 1; x <= w; x++) { row += g[(y - 1) * w + x - 1]; I[y * W1 + x] = I[(y - 1) * W1 + x] + row; } }
+  const r = win >> 1, b = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+      const s = I[y1 * W1 + x1] - I[y0 * W1 + x1] - I[y1 * W1 + x0] + I[y0 * W1 + x0];
+      b[y * w + x] = g[y * w + x] < s / ((x1 - x0) * (y1 - y0)) - C ? 1 : 0;
+    }
+  }
+  return b;
+}
+// 8-connected components of ink pixels
+function components(b, w, h) {
+  const lab = new Int32Array(w * h), comps = [], stack = new Int32Array(w * h);
+  let n = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!b[i] || lab[i]) continue;
+    n++; let sp = 0; stack[sp++] = i; lab[i] = n;
+    let x0 = w, y0 = h, x1 = 0, y1 = 0, area = 0;
+    while (sp) {
+      const k = stack[--sp], x = k % w, y = (k / w) | 0; area++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx < 0 || xx >= w) continue;
+          const kk = yy * w + xx; if (b[kk] && !lab[kk]) { lab[kk] = n; stack[sp++] = kk; } } }
+    }
+    comps.push({ id: n, x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1, area });
+  }
+  return { lab, comps };
+}
+// Find the plate's character row(s) inside the guide box and return a clean black-on-white crop.
+function extractPlateText(rgba, w, h) {
+  const g = toGray(rgba, w, h);
+  const win = Math.max(15, (Math.round(h / 5) | 1));
+  let b = adaptiveBinarize(g, w, h, win, 8);
+  let { lab, comps } = components(b, w, h);
+  // Light-on-dark plates (older green plates): if few candidates, try inverted ink
+  const pick = (comps) => {
+    const ok = comps.filter(c => !(c.x0 === 0 || c.y0 === 0 || c.x1 === w - 1 || c.y1 === h - 1)
+      && c.w < 0.5 * w && c.h < 0.9 * h && c.area > 0.0003 * w * h);
+    const tall = ok.filter(c => c.h / c.w >= 0.9 && c.h / c.w <= 9 && c.h >= 0.12 * h);
+    if (tall.length < 4) return null;
+    // dominant height: the median of the tallest 7
+    const hs = tall.map(c => c.h).sort((a, b) => b - a).slice(0, 7);
+    const H = hs[Math.floor(hs.length / 2)];
+    let chars = tall.filter(c => c.h >= 0.55 * H && c.h <= 1.35 * H);
+    if (chars.length < 4) return null;
+    // keep the main row band (allow a second, upper row for 2-row plates)
+    const cy = chars.map(c => (c.y0 + c.y1) / 2).sort((a, b) => a - b);
+    const midY = cy[Math.floor(cy.length / 2)];
+    chars = chars.filter(c => Math.abs((c.y0 + c.y1) / 2 - midY) < 1.6 * H);
+    // trim plate-edge fragments: short, isolated blobs at either end of the row
+    chars.sort((a, b) => a.x0 - b.x0);
+    const weak = c => c.h < 0.8 * H || c.area / (c.w * c.h) < 0.33;
+    while (chars.length > 4 && weak(chars[0]) && chars[1].x0 - chars[0].x1 > H) chars.shift();
+    while (chars.length > 4 && weak(chars[chars.length - 1]) && chars[chars.length - 1].x0 - chars[chars.length - 2].x1 > H) chars.pop();
+    return { ok, chars, H };
+  };
+  let res = pick(comps), inverted = false;
+  if (!res) {
+    for (let i = 0; i < b.length; i++) b[i] = 0;
+    const g2 = new Float32Array(g.length); for (let i = 0; i < g.length; i++) g2[i] = 255 - g[i];
+    b = adaptiveBinarize(g2, w, h, win, 8); ({ lab, comps } = components(b, w, h));
+    res = pick(comps); inverted = true;
+    if (!res) return null;
+  }
+  const { ok, chars, H } = res;
+  let x0 = Math.min(...chars.map(c => c.x0)), x1 = Math.max(...chars.map(c => c.x1));
+  let y0 = Math.min(...chars.map(c => c.y0)), y1 = Math.max(...chars.map(c => c.y1));
+  const padX = Math.round(0.5 * H), padY = Math.round(0.3 * H);
+  x0 = Math.max(0, x0 - padX); x1 = Math.min(w - 1, x1 + padX); y0 = Math.max(0, y0 - padY); y1 = Math.min(h - 1, y1 + padY);
+  // include upper row of 2-row plates: smaller glyphs directly above the main row
+  const upper = ok.filter(c => c.y1 < y0 + padY && c.y0 > y0 - 1.2 * H && c.x0 >= x0 && c.x1 <= x1 && c.h >= 0.35 * H);
+  if (upper.length >= 2) y0 = Math.max(0, Math.min(...upper.map(c => c.y0)) - padY);
+  // draw only glyph parts: inside the tight character span, and not speckle noise
+  const kx0 = Math.min(...chars.map(c => c.x0)) - 0.15 * H, kx1 = Math.max(...chars.map(c => c.x1)) + 0.15 * H;
+  const keep = new Uint8Array(Math.max(...ok.map(c => c.id)) + 1);
+  for (const c of ok) if (c.x0 >= kx0 && c.x1 <= kx1 && c.y0 >= y0 && c.y1 <= y1 && c.area >= 0.012 * H * H) keep[c.id] = 1;
+  // output: scale so that main glyph height ≈ 48px, with a white margin
+  const scale = Math.min(2, 48 / H), M = 12;
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+  const ow = Math.round(cw * scale) + 2 * M, oh = Math.round(ch * scale) + 2 * M;
+  const out = new Uint8ClampedArray(ow * oh * 4).fill(255);
+  for (let y = 0; y < oh - 2 * M; y++) {
+    const sy = y0 + Math.min(ch - 1, Math.floor(y / scale));
+    for (let x = 0; x < ow - 2 * M; x++) {
+      const sx = x0 + Math.min(cw - 1, Math.floor(x / scale));
+      const id = lab[sy * w + sx];
+      if (id && keep[id]) { const p = ((y + M) * ow + (x + M)) * 4; out[p] = out[p + 1] = out[p + 2] = 0; }
+    }
+  }
+  const rows = (y1 - y0) > 1.9 * H ? 2 : 1;
+  return { data: out, w: ow, h: oh, rows, box: { x: x0, y: y0, w: cw, h: ch }, inverted, glyph: H, count: chars.length };
+}
+if (typeof module !== 'undefined') module.exports = { toGray, adaptiveBinarize, components, extractPlateText };
+
+</script>
+<script>
+'use strict';
+/* ================= helpers ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const hm = ts => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const md = s => s ? `${+s.slice(5, 7)}/${+s.slice(8, 10)}` : '';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const unitOf = v => v ? [v.dong && `${v.dong}동`, v.ho && `${v.ho}호`].filter(Boolean).join(' ') : '';
+const plateHTML = (p, sm) => `<span class="plate${sm ? ' sm' : ''}">${esc(p)}</span>`;
+const KIND = {
+  resident: { label: '입주민', cls: 'ok' },
+  visitor: { label: '방문차량', cls: 'visit' },
+  expired: { label: '방문 기간 지남', cls: 'bad' },
+  unregistered: { label: '미등록 차량', cls: 'bad' },
+};
+
+/* ================= storage (this phone only) ================= */
+const KEY = 'jucha-patrol-v1';
+let saveOk = true;
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.vehicles) && Array.isArray(s.events)) return s; } catch (e) {}
+  return null;
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); saveOk = true; } catch (e) { saveOk = false; }
+  renderStatus();
+}
+function sampleState() {
+  const t = new Date(), d = n => ymd(addDays(t, n)), day = t.getDate();
+  const vehicles = [
+    { plate: '12가3456', kind: 'resident', dong: '101', ho: '1203', memo: '', sample: true },
+    { plate: '59러4821', kind: 'resident', dong: '101', ho: '304', memo: '경차', sample: true },
+    { plate: '231보7765', kind: 'resident', dong: '104', ho: '1101', memo: '', sample: true },
+    { plate: '157허2468', kind: 'visitor', dong: '103', ho: '502', memo: '부모님 방문', from: d(-10), to: d(3), sample: true },
+    { plate: '서울12바3456', kind: 'visitor', dong: '102', ho: '801', memo: '이사 견적', from: d(-6), to: d(-3), sample: true },
+  ];
+  const events = [];
+  [[9, '157허2468', 'visitor', '20:41'], [6, '88두1204', 'unregistered', '23:05'], [3, '157허2468', 'visitor', '21:12'],
+   [2, '88두1204', 'unregistered', '22:37'], [1, '12가3456', 'resident', '19:58']].forEach(([n, plate, kind, at]) => {
+    if (n >= day) return; // keep examples inside this month
+    const date = d(-n);
+    events.push({ plate, kind, date, ts: new Date(`${date}T${at}:00`).getTime(), source: 'camera', hits: 1, sample: true });
+  });
+  return { vehicles, events, settings: { votes: 2, limit: 10, sound: true } };
+}
+let state = load() || sampleState();
+state.settings = Object.assign({ votes: 2, limit: 10, sound: true }, state.settings);
+
+/* ================= judging ================= */
+function findVehicle(p) {
+  const core = plateCore(p);
+  return state.vehicles.find(v => v.plate === p)
+    || state.vehicles.find(v => plateCore(v.plate) === core && (v.plate === core || p === core));
+}
+function judge(p) {
+  const v = findVehicle(p), today = ymd(new Date());
+  let kind = 'unregistered';
+  if (v) kind = v.kind === 'resident' ? 'resident'
+    : ((!v.from || v.from <= today) && (!v.to || today <= v.to) ? 'visitor' : 'expired');
+  const sugg = v ? [] : state.vehicles.filter(x => editDistance(plateCore(x.plate), plateCore(p)) === 1).slice(0, 3);
+  return { plate: v ? v.plate : p, read: p, kind, v, sugg };
+}
+function monthCount(plate, ym) { return state.events.filter(e => e.plate === plate && e.date.startsWith(ym)).length; }
+function record(j, source) {
+  const today = ymd(new Date());
+  let e = state.events.find(x => x.plate === j.plate && x.date === today), created = false;
+  if (!e) { e = { plate: j.plate, kind: j.kind, date: today, ts: Date.now(), source, hits: 1 }; state.events.push(e); created = true; }
+  else { e.ts = Date.now(); e.kind = j.kind; e.hits = (e.hits || 1) + 1; }
+  save();
+  return { e, created };
+}
+
+/* ================= result card ================= */
+let last = null; // { j, rec }
+function showResult(j, source) {
+  const rec = record(j, source);
+  last = { j, rec };
+  renderResult(); renderRecent(); feedback(j.kind);
+  if (!$('#tab-log').hidden) renderLog();
+}
+function renderResult() {
+  const box = $('#result');
+  if (!last) {
+    box.className = 'result';
+    box.innerHTML = `<div class="empty">아직 확인한 차량이 없습니다. <b>스캔 시작</b>을 누르고 번호판을 상자에 맞춰 주세요.</div>`;
+    return;
+  }
+  const { j } = last, k = KIND[j.kind], ym = ymd(new Date()).slice(0, 7), n = monthCount(j.plate, ym), v = j.v;
+  let where = '', meta = [], extra = '';
+  if (j.kind === 'resident') { where = unitOf(v) || '등록 차량'; if (v.memo) meta.push(esc(v.memo)); }
+  if (j.kind === 'visitor') {
+    where = `${unitOf(v) || '세대 미기재'} 방문`;
+    if (v.from || v.to) meta.push(`방문 기간 ${md(v.from) || '?'} ~ ${md(v.to) || '?'}`);
+    meta.push(`이번 달 ${n}번째 방문`);
+    if (v.memo) meta.push(esc(v.memo));
+    if (state.settings.limit > 0 && n > state.settings.limit) extra = `<span class="warn">월 허용 ${state.settings.limit}회 초과</span>`;
+  }
+  if (j.kind === 'expired') {
+    where = `${unitOf(v) || '세대 미기재'} 방문으로 등록됐던 차량`;
+    meta.push(`등록 기간 ${md(v.from) || '?'} ~ ${md(v.to) || '?'}`, `이번 달 ${n}번째 확인`);
+  }
+  if (j.kind === 'unregistered') { where = '명부에 없는 번호입니다'; meta.push(`이번 달 ${n}번째 적발`); }
+  if (j.read !== j.plate) meta.push(`읽은 번호 ${esc(j.read)}`);
+  meta.push(`${hm(last.rec.e.ts)} 기록됨`);
+  const sugg = j.sugg.length ? `<div class="sugg">비슷한 등록 차량: ${j.sugg.map(s =>
+    `<button class="btn" type="button" data-fix="${esc(s.plate)}">${plateHTML(s.plate, 1)} ${esc(unitOf(s))}</button>`).join('')}</div>` : '';
+  box.className = `result ${k.cls}`;
+  box.innerHTML = `
+    <div class="top">${plateHTML(j.plate)}<span class="verdict">${k.label}</span></div>
+    <div class="where">${esc(where)} ${extra}</div>
+    <div class="meta">${meta.join(' · ')}</div>
+    ${sugg}
+    <div class="row-actions">
+      <button class="btn" type="button" id="fixBtn">번호가 틀렸어요</button>
+      ${j.kind === 'unregistered' || j.kind === 'expired' ? `<button class="btn" type="button" id="regBtn">방문차량으로 등록</button>` : ''}
+    </div>`;
+}
+function undoLast() {
+  if (!last) return;
+  const { e, created } = last.rec;
+  if (created) state.events = state.events.filter(x => x !== e); else e.hits = Math.max(1, (e.hits || 1) - 1);
+  save();
+}
+$('#result').addEventListener('click', ev => {
+  const fix = ev.target.closest('[data-fix]');
+  if (fix) { undoLast(); showResult(judge(fix.dataset.fix), 'manual'); return; }
+  if (ev.target.closest('#fixBtn')) {
+    const read = last.j.read; undoLast(); last = null; renderResult(); renderRecent();
+    openManual(read);
+  }
+  if (ev.target.closest('#regBtn')) { const p = last.j.plate; switchTab('cars'); editCar(null, p, 'visitor'); }
+});
+
+/* ================= recent ================= */
+function renderRecent() {
+  const ev = [...state.events].sort((a, b) => b.ts - a.ts).slice(0, 6);
+  $('#recent').innerHTML = ev.length ? ev.map(e => {
+    const k = KIND[e.kind] || KIND.unregistered, v = findVehicle(e.plate);
+    return `<li>${plateHTML(e.plate, 1)}<div class="txt"><span class="chip ${k.cls}">${k.label}</span>${e.sample ? ' <span class="chip ex">예시</span>' : ''}
+      <span class="sub">${esc(unitOf(v)) || '&nbsp;'}</span></div><div class="end">${md(e.date)}<br>${hm(e.ts)}</div></li>`;
+  }).join('') : `<li><div class="txt">기록이 없습니다.</div></li>`;
+}
+
+/* ================= feedback: sound + vibration ================= */
+let actx = null;
+function unlockAudio() {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+}
+function tone(f, t, dur) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'square'; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.03);
+}
+function feedback(kind) {
+  if (state.settings.sound && actx) {
+    try {
+      const t = actx.currentTime;
+      if (kind === 'resident') tone(1320, t, 0.12);
+      else if (kind === 'visitor') { tone(990, t, 0.1); tone(990, t + 0.17, 0.1); }
+      else tone(300, t, 0.55);
+    } catch (e) {}
+  }
+  try { navigator.vibrate && navigator.vibrate(kind === 'resident' ? 60 : kind === 'visitor' ? [60, 70, 60] : 350); } catch (e) {}
+  const vw = $('#viewer'), cls = 'flash-' + (KIND[kind]?.cls || 'bad');
+  vw.classList.add(cls); setTimeout(() => vw.classList.remove(cls), 900);
+}
+
+/* ================= OCR engine ================= */
+const engine = { worker: null, state: 'idle', pct: 0, psm: null, promise: null };
+function loadEngine() {
+  if (engine.promise) return engine.promise;
+  if (!window.Tesseract) { engine.state = 'error'; renderStatus(); return Promise.reject(new Error('no-tesseract')); }
+  engine.state = 'loading'; renderStatus();
+  engine.promise = Tesseract.createWorker('kor', 1, {
+    logger: m => { if (typeof m.progress === 'number' && /load/.test(m.status)) { engine.pct = Math.round(m.progress * 100); renderStatus(); } },
+  }).then(async w => {
+    await w.setParameters({ tessedit_char_whitelist: OCR_WHITELIST, user_defined_dpi: '300', tessedit_pageseg_mode: '7' });
+    engine.psm = '7'; engine.worker = w; engine.state = 'ready'; renderStatus(); return w;
+  }).catch(err => { engine.state = 'error'; engine.promise = null; renderStatus(); throw err; });
+  return engine.promise;
+}
+const ocrCanvas = document.createElement('canvas'), ocrCtx = ocrCanvas.getContext('2d');
+async function readPlate(e) {
+  const w = await loadEngine();
+  ocrCanvas.width = e.w; ocrCanvas.height = e.h;
+  ocrCtx.putImageData(new ImageData(e.data, e.w, e.h), 0, 0);
+  const psm = e.rows === 2 ? '6' : '7';
+  if (engine.psm !== psm) { await w.setParameters({ tessedit_pageseg_mode: psm }); engine.psm = psm; }
+  const r = await w.recognize(ocrCanvas);
+  return { text: (r.data.text || '').replace(/\s+/g, ''), plate: parsePlate(r.data.text) };
+}
+
+/* ================= camera scanning ================= */
+const video = $('#video'), work = document.createElement('canvas');
+const wctx = work.getContext('2d', { willReadFrequently: true });
+const scan = { stream: null, track: null, running: false, reads: [], last: null, torch: false, wake: null, timer: 0 };
+
+function roiInVideo() {
+  const vw = video.videoWidth, vh = video.videoHeight, el = $('#viewer').getBoundingClientRect(), g = $('#guide').getBoundingClientRect();
+  const s = Math.max(el.width / vw, el.height / vh), ox = (el.width - vw * s) / 2, oy = (el.height - vh * s) / 2;
+  let x = (g.left - el.left - ox) / s, y = (g.top - el.top - oy) / s, w = g.width / s, h = g.height / s;
+  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+  return { x, y, w, h };
+}
+function vote(p) {
+  const now = performance.now();
+  scan.reads = scan.reads.filter(r => now - r.t < 2500);
+  if (!p) return null;
+  scan.reads.push({ p, t: now });
+  return scan.reads.filter(r => r.p === p).length >= state.settings.votes ? p : null;
+}
+function confirmPlate(p) {
+  const j = judge(p), now = Date.now();
+  if (scan.last && scan.last.plate === j.plate && now - scan.last.t < 10000) { scan.last.t = now; return; }
+  scan.last = { plate: j.plate, t: now }; scan.reads = [];
+  showResult(j, 'camera');
+}
+function setLive(html) { const el = $('#live'); el.hidden = !html; if (html) el.innerHTML = html; }
+async function tick() {
+  if (!scan.running) return;
+  let found = false;
+  try {
+    if (video.readyState >= 2 && video.videoWidth) {
+      const r = roiInVideo(), cw = Math.min(720, Math.round(r.w)), ch = Math.round(cw * r.h / r.w);
+      if (work.width !== cw || work.height !== ch) { work.width = cw; work.height = ch; }
+      wctx.drawImage(video, r.x, r.y, r.w, r.h, 0, 0, cw, ch);
+      const e = extractPlateText(wctx.getImageData(0, 0, cw, ch).data, cw, ch);
+      const lock = $('#lock');
+      if (e) {
+        found = true;
+        Object.assign(lock.style, { left: e.box.x / cw * 100 + '%', top: e.box.y / ch * 100 + '%', width: e.box.w / cw * 100 + '%', height: e.box.h / ch * 100 + '%' });
+        lock.hidden = false;
+        if (engine.state === 'ready') {
+          const { text, plate } = await readPlate(e);
+          if (!scan.running) return;
+          setLive(plate ? `읽는 중 <b>${esc(plate)}</b>` : `읽는 중 ${esc(text.slice(0, 12)) || '…'}`);
+          const c = vote(plate);
+          if (c) confirmPlate(c);
+        }
+      } else { lock.hidden = true; vote(null); setLive(''); }
+      $('#hint').hidden = found;
+    }
+  } catch (err) { console.warn(err); }
+  scan.timer = setTimeout(tick, found ? 20 : 110);
+}
+async function startScan() {
+  unlockAudio();
+  const msg = $('#coverMsg');
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    msg.innerHTML = '<span class="err">카메라는 <b>https://</b> 주소에서만 켜집니다.<br>호스팅된 주소로 열어 주세요.</span>'; return;
+  }
+  $('#startBtn').disabled = true; msg.textContent = '카메라를 켜는 중…';
+  loadEngine().catch(() => {});
+  try {
+    scan.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (err) {
+    $('#startBtn').disabled = false;
+    msg.innerHTML = `<span class="err">${err && err.name === 'NotAllowedError'
+      ? '카메라 권한이 꺼져 있습니다.<br>아이폰: 설정 › Safari › 카메라 › 허용'
+      : '카메라를 켜지 못했습니다. 다른 앱이 카메라를 쓰고 있는지 확인해 주세요.'}</span>`;
+    return;
+  }
+  video.srcObject = scan.stream;
+  try { await video.play(); } catch (e) {}
+  scan.track = scan.stream.getVideoTracks()[0];
+  const caps = scan.track.getCapabilities ? scan.track.getCapabilities() : {};
+  $('#torchBtn').hidden = !caps.torch;
+  try { scan.wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
+  $('#cover').hidden = true; $('#guide').hidden = false; $('#stopBtn').hidden = false; $('#hint').hidden = false; $('#startBtn').disabled = false;
+  scan.running = true; scan.reads = []; tick();
+}
+function stopScan(reason) {
+  scan.running = false; clearTimeout(scan.timer);
+  if (scan.stream) scan.stream.getTracks().forEach(t => t.stop());
+  scan.stream = scan.track = null; scan.torch = false; $('#torchBtn').classList.remove('on');
+  try { scan.wake && scan.wake.release(); } catch (e) {} scan.wake = null;
+  video.srcObject = null;
+  $('#cover').hidden = false; $('#guide').hidden = true; $('#stopBtn').hidden = true; $('#torchBtn').hidden = true; $('#lock').hidden = true; $('#hint').hidden = true; setLive('');
+  $('#coverMsg').innerHTML = reason || '멈췄습니다. 다시 시작하려면 눌러 주세요.';
+}
+$('#startBtn').addEventListener('click', startScan);
+$('#stopBtn').addEventListener('click', () => stopScan());
+$('#torchBtn').addEventListener('click', async () => {
+  if (!scan.track) return;
+  scan.torch = !scan.torch;
+  try { await scan.track.applyConstraints({ advanced: [{ torch: scan.torch }] }); } catch (e) { scan.torch = false; }
+  $('#torchBtn').classList.toggle('on', scan.torch);
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && scan.running) stopScan('화면을 벗어나 카메라를 껐습니다. 다시 시작하려면 눌러 주세요.'); });
+
+/* ================= photo check (also handy for testing on a PC) ================= */
+$('#photoInput').addEventListener('change', async ev => {
+  const f = ev.target.files && ev.target.files[0]; ev.target.value = '';
+  if (!f) return;
+  const box = $('#result'); box.className = 'result'; box.innerHTML = '<div class="empty">사진에서 번호판을 찾는 중…</div>';
+  try {
+    const img = await createImageBitmap(f, { imageOrientation: 'from-image' });
+    const s = Math.min(1, 1600 / img.width), W = Math.round(img.width * s), H = Math.round(img.height * s);
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0, W, H);
+    const windows = [[0, 0, 1, 1], [.1, .3, .8, .4], [.2, .35, .6, .3], [0, .25, 1, .5], [.25, .4, .5, .2]];
+    let found = null;
+    for (const [fx, fy, fw, fh] of windows) {
+      const rw = Math.round(W * fw), rh = Math.round(H * fh), cw = Math.min(900, rw), ch = Math.round(cw * rh / rw);
+      work.width = cw; work.height = ch; wctx.drawImage(c, W * fx, H * fy, rw, rh, 0, 0, cw, ch);
+      const e = extractPlateText(wctx.getImageData(0, 0, cw, ch).data, cw, ch);
+      if (!e) continue;
+      const r = await readPlate(e);
+      if (r.plate) { found = r.plate; break; }
+    }
+    if (found) { unlockAudio(); showResult(judge(found), 'photo'); }
+    else box.innerHTML = '<div class="empty">사진에서 번호판을 읽지 못했습니다. 번호판이 크게, 정면으로 나오게 다시 찍어 주세요.</div>';
+  } catch (err) {
+    box.innerHTML = `<div class="empty">${engine.state === 'error' ? '인식 엔진을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.' : '사진을 읽지 못했습니다.'}</div>`;
+  }
+});
+
+/* ================= manual entry ================= */
+function openManual(value) {
+  const f = $('#manualForm'); f.hidden = false; $('#pick').innerHTML = '';
+  const i = $('#manualInput'); i.value = value || ''; i.focus();
+}
+$('#manualBtn').addEventListener('click', () => { const f = $('#manualForm'); if (f.hidden) openManual(''); else { f.hidden = true; $('#pick').innerHTML = ''; } });
+$('#manualForm').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const raw = $('#manualInput').value.trim(), p = parsePlate(raw), digits = raw.replace(/\D/g, '');
+  unlockAudio();
+  if (p) { $('#pick').innerHTML = ''; $('#manualForm').hidden = true; showResult(judge(p), 'manual'); return; }
+  if (/^\d{4}$/.test(digits) && raw.replace(/\s/g, '').length === 4) {
+    const plates = [...new Set([...state.vehicles.map(v => v.plate), ...state.events.map(e => e.plate)])].filter(x => x.endsWith(digits));
+    $('#pick').innerHTML = plates.length
+      ? `<div class="card" style="margin-top:8px"><ul class="list">${plates.map(x => { const v = findVehicle(x), k = v ? KIND[judge(x).kind] : KIND.unregistered;
+          return `<li>${plateHTML(x, 1)}<div class="txt"><span class="chip ${k.cls}">${k.label}</span> ${esc(unitOf(v))}</div><button class="btn" type="button" data-pick="${esc(x)}">선택</button></li>`; }).join('')}</ul></div>`
+      : `<p class="help" style="margin-top:8px">뒷자리 ${digits}로 등록되거나 기록된 차량이 없습니다. 전체 번호를 입력하면 미등록으로 기록할 수 있습니다.</p>`;
+    return;
+  }
+  $('#pick').innerHTML = `<p class="help" style="margin-top:8px;color:var(--bad)">번호 형식이 아닙니다. 예: 12가3456, 123가4567, 서울12바3456</p>`;
+});
+$('#pick').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-pick]'); if (!b) return;
+  $('#pick').innerHTML = ''; $('#manualForm').hidden = true; showResult(judge(b.dataset.pick), 'manual');
+});
+
+/* ================= vehicles ================= */
+let editing = null;
+function renderCars() {
+  const q = $('#carSearch').value.trim().replace(/\s/g, '');
+  const list = state.vehicles.filter(v => !q || v.plate.includes(q) || `${v.dong}동${v.ho}호`.includes(q) || (v.memo || '').includes(q))
+    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'resident' ? -1 : 1) || (+a.dong || 0) - (+b.dong || 0) || (+a.ho || 0) - (+b.ho || 0));
+  const nR = state.vehicles.filter(v => v.kind === 'resident').length, nV = state.vehicles.length - nR;
+  $('#carCount').textContent = `등록 차량 ${state.vehicles.length}대 (입주민 ${nR} · 방문 ${nV})`;
+  const today = ymd(new Date());
+  $('#carList').innerHTML = list.length ? list.map(v => {
+    const live = v.kind === 'resident' ? KIND.resident : ((!v.from || v.from <= today) && (!v.to || today <= v.to) ? KIND.visitor : KIND.expired);
+    const period = v.kind === 'visitor' && (v.from || v.to) ? ` · ${md(v.from) || '?'}~${md(v.to) || '?'}` : '';
+    return `<li>${plateHTML(v.plate, 1)}<div class="txt"><b>${esc(unitOf(v) || '세대 미기재')}</b><br>
+      <span class="chip ${live.cls}">${v.kind === 'resident' ? '입주민' : live === KIND.visitor ? '방문' : '방문 기간 지남'}</span>${esc(period)}${v.memo ? ' · ' + esc(v.memo) : ''}
+      ${v.sample ? ' <span class="chip ex">예시</span>' : ''}</div>
+      <button class="btn" type="button" data-edit="${esc(v.plate)}">수정</button></li>`;
+  }).join('') : `<li><div class="txt">${q ? '찾는 차량이 없습니다.' : '등록된 차량이 없습니다. 위에서 추가하거나 엑셀에서 붙여넣어 주세요.'}</div></li>`;
+  $('#sampleNotice').hidden = !state.vehicles.some(v => v.sample) && !state.events.some(e => e.sample);
+}
+function setKindUI(kind) { $('#fKindR').checked = kind !== 'visitor'; $('#fKindV').checked = kind === 'visitor'; $('#fPeriod').hidden = kind !== 'visitor'; }
+function editCar(v, plate, kind) {
+  editing = v ? v.plate : null;
+  $('#addCard').open = true;
+  $('#addTitle').textContent = v ? '차량 수정' : '차량 추가';
+  $('#fPlate').value = v ? v.plate : (plate || '');
+  setKindUI(v ? v.kind : (kind || 'resident'));
+  $('#fDong').value = v?.dong || ''; $('#fHo').value = v?.ho || ''; $('#fMemo').value = v?.memo || '';
+  const t = new Date();
+  $('#fFrom').value = v?.from || ymd(t); $('#fTo').value = v?.to || ymd(addDays(t, 2));
+  $('#fCancel').hidden = !v; $('#fSubmit').textContent = v ? '수정 저장' : '저장';
+  $('#fCancel').textContent = '삭제'; $('#fCancel').classList.add('danger'); $('#fCancel').dataset.armed = '';
+  $('#fMsg').textContent = ''; $('#fMsg').className = 'formmsg';
+  $('#addCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('#carForm').addEventListener('change', ev => { if (ev.target.name === 'fKind') $('#fPeriod').hidden = ev.target.value !== 'visitor'; });
+$('#carForm').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const msg = $('#fMsg'), p = parsePlate($('#fPlate').value);
+  if (!p) { msg.className = 'formmsg err'; msg.textContent = '번호 형식을 확인해 주세요. 예: 12가3456, 123가4567, 서울12바3456'; return; }
+  const kind = $('#fKindV').checked ? 'visitor' : 'resident';
+  const v = { plate: p, kind, dong: $('#fDong').value.trim().replace(/동$/, ''), ho: $('#fHo').value.trim().replace(/호$/, ''), memo: $('#fMemo').value.trim() };
+  if (kind === 'visitor') { v.from = $('#fFrom').value || ''; v.to = $('#fTo').value || ''; if (v.from && v.to && v.to < v.from) { msg.className = 'formmsg err'; msg.textContent = '종료일이 시작일보다 앞입니다.'; return; } }
+  const existed = state.vehicles.some(x => x.plate === p);
+  state.vehicles = state.vehicles.filter(x => x.plate !== p && x.plate !== editing);
+  state.vehicles.push(v); save(); renderCars();
+  msg.className = 'formmsg ok'; msg.textContent = `${p} ${existed || editing ? '수정했습니다' : '등록했습니다'}.`;
+  editing = null; $('#fPlate').value = ''; $('#fMemo').value = ''; $('#fCancel').hidden = true; $('#addTitle').textContent = '차량 추가'; $('#fSubmit').textContent = '저장';
+  if (last) renderResult();
+});
+$('#fCancel').addEventListener('click', ev => {
+  const b = ev.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = '정말 삭제'; setTimeout(() => { b.dataset.armed = ''; b.textContent = '삭제'; }, 3000); return; }
+  state.vehicles = state.vehicles.filter(x => x.plate !== editing); save();
+  $('#fMsg').className = 'formmsg ok'; $('#fMsg').textContent = `${editing} 삭제했습니다.`;
+  editing = null; b.hidden = true; $('#fPlate').value = ''; $('#addTitle').textContent = '차량 추가'; $('#fSubmit').textContent = '저장';
+  renderCars();
+});
+$('#carList').addEventListener('click', ev => { const b = ev.target.closest('[data-edit]'); if (b) editCar(state.vehicles.find(v => v.plate === b.dataset.edit)); });
+$('#carSearch').addEventListener('input', renderCars);
+$('#clearSample').addEventListener('click', () => {
+  state.vehicles = state.vehicles.filter(v => !v.sample); state.events = state.events.filter(e => !e.sample);
+  if (last && last.rec.e.sample) last = null;
+  save(); renderAll();
+});
+
+/* CSV / pasted Excel rows */
+function normDate(s) {
+  const m = String(s || '').trim().match(/^(\d{4})[-./ ]?(\d{1,2})[-./ ]?(\d{1,2})/);
+  return m ? `${m[1]}-${pad(+m[2])}-${pad(+m[3])}` : '';
+}
+function importRows(text) {
+  let add = 0, upd = 0, skip = 0;
+  text.replace(/^﻿/, '').split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    const c = line.split(line.includes('\t') ? '\t' : ',').map(s => s.trim().replace(/^"|"$/g, ''));
+    const p = parsePlate(c[0]);
+    if (!p) { if (i > 0) skip++; return; }
+    const kind = /방문|visit/i.test(c[1] || '') ? 'visitor' : 'resident';
+    const v = { plate: p, kind, dong: (c[2] || '').replace(/동$/, ''), ho: (c[3] || '').replace(/호$/, ''), memo: c[4] || '' };
+    if (kind === 'visitor') { v.from = normDate(c[5]); v.to = normDate(c[6]); }
+    const idx = state.vehicles.findIndex(x => x.plate === p);
+    if (idx >= 0) { state.vehicles[idx] = v; upd++; } else { state.vehicles.push(v); add++; }
+  });
+  save(); renderCars();
+  return { add, upd, skip };
+}
+$('#csvImport').addEventListener('click', () => {
+  const t = $('#csvText').value, m = $('#csvMsg');
+  if (!t.trim()) { m.className = 'formmsg err'; m.textContent = '붙여넣은 내용이 없습니다.'; return; }
+  const r = importRows(t);
+  m.className = 'formmsg ok'; m.textContent = `${r.add}대 추가, ${r.upd}대 갱신${r.skip ? `, ${r.skip}줄은 번호 형식이 달라 건너뜀` : ''}.`;
+  $('#csvText').value = '';
+});
+$('#csvFile').addEventListener('change', async ev => {
+  const f = ev.target.files && ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  const buf = await f.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  if (text.includes('�')) { try { text = new TextDecoder('euc-kr').decode(buf); } catch (e) {} } // Excel "CSV" saved in Korean Windows
+  $('#csvText').value = text; $('#csvMsg').className = 'formmsg'; $('#csvMsg').textContent = '파일 내용을 불러왔습니다. 확인 후 가져오기를 눌러 주세요.';
+});
+
+/* settings */
+$('#sVotes').addEventListener('change', e => { state.settings.votes = +e.target.value; save(); });
+$('#sLimit').addEventListener('change', e => { state.settings.limit = Math.max(0, Math.min(31, +e.target.value || 0)); e.target.value = state.settings.limit; save(); if (last) renderResult(); });
+$('#sSound').addEventListener('change', e => { state.settings.sound = e.target.value === 'on'; save(); });
+
+/* ================= log ================= */
+let viewMonth = ymd(new Date()).slice(0, 7);
+function shiftMonth(n) { const [y, m] = viewMonth.split('-').map(Number), d = new Date(y, m - 1 + n, 1); viewMonth = ymd(d).slice(0, 7); renderLog(); }
+function renderLog() {
+  const [y, m] = viewMonth.split('-');
+  $('#mLabel').textContent = `${y}년 ${+m}월`;
+  const ev = state.events.filter(e => e.date.startsWith(viewMonth));
+  const by = kinds => { const map = new Map(); ev.filter(e => kinds.includes(e.kind)).forEach(e => { const o = map.get(e.plate) || { plate: e.plate, n: 0, last: 0 }; o.n++; o.last = Math.max(o.last, e.ts); map.set(e.plate, o); }); return [...map.values()].sort((a, b) => b.n - a.n || b.last - a.last); };
+  const visits = by(['visitor', 'expired']), bad = by(['unregistered']);
+  const nRes = ev.filter(e => e.kind === 'resident').length;
+  $('#stats').innerHTML = [
+    ['visit', visits.reduce((s, o) => s + o.n, 0), `방문 확인 (${visits.length}대)`],
+    ['bad', bad.reduce((s, o) => s + o.n, 0), `미등록 적발 (${bad.length}대)`],
+    ['ok', nRes, '입주민 확인'],
+    ['', ev.length, '전체 기록'],
+  ].map(([c, n, l]) => `<div class="stat ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  const lim = state.settings.limit;
+  $('#visitList').innerHTML = visits.length ? visits.map(o => { const v = findVehicle(o.plate);
+    return `<li>${plateHTML(o.plate, 1)}<div class="txt"><b>${esc(unitOf(v) || '세대 미기재')}</b><br>마지막 ${md(ymd(new Date(o.last)))} ${hm(o.last)}</div>
+      <div class="end"><span class="count${lim > 0 && o.n > lim ? ' over' : ''}">${o.n}회</span>${lim > 0 ? `<br>허용 ${lim}회` : ''}</div></li>`; }).join('')
+    : `<li><div class="txt">이 달 방문차량 기록이 없습니다.</div></li>`;
+  $('#badList').innerHTML = bad.length ? bad.map(o => `<li>${plateHTML(o.plate, 1)}<div class="txt">마지막 ${md(ymd(new Date(o.last)))} ${hm(o.last)}</div>
+      <div class="end"><span class="count${o.n >= 3 ? ' over' : ''}">${o.n}회</span></div></li>`).join('')
+    : `<li><div class="txt">이 달 미등록 적발이 없습니다.</div></li>`;
+  const all = [...ev].sort((a, b) => b.ts - a.ts).slice(0, 150);
+  const src = { camera: '카메라', manual: '직접 입력', photo: '사진' };
+  $('#allList').innerHTML = all.length ? all.map(e => { const k = KIND[e.kind] || KIND.unregistered;
+    return `<li>${plateHTML(e.plate, 1)}<div class="txt"><span class="chip ${k.cls}">${k.label}</span>${e.sample ? ' <span class="chip ex">예시</span>' : ''}
+      <span class="sub">${src[e.source] || ''}${e.hits > 1 ? ` · 같은 날 ${e.hits}번 확인` : ''}</span></div>
+      <div class="end">${md(e.date)}<br>${hm(e.ts)}</div></li>`; }).join('')
+    : `<li><div class="txt">기록이 없습니다.</div></li>`;
+}
+$('#mPrev').addEventListener('click', () => shiftMonth(-1));
+$('#mNext').addEventListener('click', () => shiftMonth(1));
+function download(name, rows) {
+  const csv = '﻿' + rows.map(r => r.map(c => /[",\n]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : (c ?? '')).join(',')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+$('#exportLog').addEventListener('click', () => {
+  const ev = state.events.filter(e => e.date.startsWith(viewMonth)).sort((a, b) => a.ts - b.ts);
+  download(`주차순찰_기록_${viewMonth}.csv`, [['날짜', '시각', '차량번호', '판정', '동', '호', '같은 날 확인 횟수', '확인 방법'],
+    ...ev.map(e => { const v = findVehicle(e.plate); return [e.date, hm(e.ts), e.plate, (KIND[e.kind] || {}).label, v?.dong || '', v?.ho || '', e.hits || 1, e.source]; })]);
+});
+$('#exportCars').addEventListener('click', () => download(`주차순찰_차량명부_${ymd(new Date())}.csv`,
+  [['차량번호', '구분', '동', '호', '메모', '시작일', '종료일'], ...state.vehicles.map(v => [v.plate, v.kind === 'resident' ? '입주민' : '방문', v.dong, v.ho, v.memo, v.from || '', v.to || ''])]));
+$('#clearMonth').addEventListener('click', ev => {
+  const b = ev.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = '한 번 더 누르면 삭제'; setTimeout(() => { b.dataset.armed = ''; b.textContent = '이 달 기록 삭제'; }, 3000); return; }
+  state.events = state.events.filter(e => !e.date.startsWith(viewMonth)); b.dataset.armed = ''; b.textContent = '이 달 기록 삭제';
+  if (last && last.rec.e.date.startsWith(viewMonth)) last = null;
+  save(); renderAll();
+});
+
+/* ================= status / tabs ================= */
+function renderStatus() {
+  const n = state.vehicles.length;
+  const eng = { idle: ['', '엔진 대기'], loading: ['loading', `엔진 받는 중 ${engine.pct}%`], ready: ['ready', '인식 준비됨'], error: ['error', '엔진 오류'] }[engine.state];
+  $('#status').innerHTML = `<span class="dot ${eng[0]}"></span>${eng[1]}<br>명부 <b>${n}대</b>${saveOk ? '' : ' · <span style="color:var(--bad)">저장 안 됨</span>'}`;
+}
+function switchTab(name) {
+  document.querySelectorAll('.tabbar [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  ['scan', 'cars', 'log'].forEach(t => { $('#tab-' + t).hidden = t !== name; });
+  if (name !== 'scan' && scan.running) stopScan();
+  if (name === 'cars') renderCars();
+  if (name === 'log') renderLog();
+  window.scrollTo(0, 0);
+}
+document.querySelector('.tabbar').addEventListener('click', ev => { const b = ev.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
+function renderAll() {
+  $('#sVotes').value = String(state.settings.votes); $('#sLimit').value = state.settings.limit; $('#sSound').value = state.settings.sound ? 'on' : 'off';
+  renderStatus(); renderResult(); renderRecent(); renderCars(); renderLog();
+}
+renderAll();
+if (!load()) save();
+// fetch the OCR engine in the background so the first scan starts right away
+setTimeout(() => loadEngine().catch(() => {}), 300);
+</script>
+</body>
+</html>
